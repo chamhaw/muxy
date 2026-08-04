@@ -1,4 +1,21 @@
 public struct SessionReplayBuffer: Sendable {
+    private static let alternateScreenEnterSequences: [[UInt8]] = [
+        [0x1B, 0x5B, 0x3F, 0x34, 0x37, 0x68],
+        [0x1B, 0x5B, 0x3F, 0x31, 0x30, 0x34, 0x37, 0x68],
+        [0x1B, 0x5B, 0x3F, 0x31, 0x30, 0x34, 0x39, 0x68],
+    ]
+
+    private static let alternateScreenLeaveSequences: [[UInt8]] = [
+        [0x1B, 0x5B, 0x3F, 0x34, 0x37, 0x6C],
+        [0x1B, 0x5B, 0x3F, 0x31, 0x30, 0x34, 0x37, 0x6C],
+        [0x1B, 0x5B, 0x3F, 0x31, 0x30, 0x34, 0x39, 0x6C],
+    ]
+
+    private static let screenControlTailLength = max(
+        alternateScreenEnterSequences.map(\.count).max() ?? 0,
+        alternateScreenLeaveSequences.map(\.count).max() ?? 0
+    )
+
     public let capacity: Int
 
     private var storage: [UInt8]
@@ -72,10 +89,6 @@ public struct SessionReplayBuffer: Sendable {
                 updateScreenControlTail(from: combined)
                 return
             }
-            let eventStartInNewBytes = max(0, next.lowerBound - newByteOffset)
-            if eventStartInNewBytes > unhandledNewByteIndex {
-                appendStorage(Array(bytes[unhandledNewByteIndex ..< eventStartInNewBytes]))
-            }
             removeAll()
             alternateScreenActive = true
             unhandledNewByteIndex = max(unhandledNewByteIndex, max(0, next.upperBound - newByteOffset))
@@ -89,7 +102,7 @@ public struct SessionReplayBuffer: Sendable {
 
     private mutating func appendStorage(_ bytes: [UInt8]) {
         guard capacity > 0, !bytes.isEmpty else { return }
-        guard bytes.count < capacity else {
+        guard bytes.count <= capacity else {
             let tail = bytes.suffix(capacity)
             for (offset, byte) in tail.enumerated() {
                 storage[offset] = byte
@@ -97,6 +110,18 @@ public struct SessionReplayBuffer: Sendable {
             start = 0
             count = capacity
             hasDiscardedBytes = true
+            return
+        }
+        if bytes.count == capacity {
+            let discardedExistingBytes = count > 0
+            for (offset, byte) in bytes.enumerated() {
+                storage[offset] = byte
+            }
+            start = 0
+            count = capacity
+            if discardedExistingBytes {
+                hasDiscardedBytes = true
+            }
             return
         }
         for byte in bytes {
@@ -124,11 +149,12 @@ public struct SessionReplayBuffer: Sendable {
         start = 0
         count = 0
         hasDiscardedBytes = false
+        alternateScreenActive = false
         screenControlTail = []
     }
 
     private mutating func updateScreenControlTail(from bytes: [UInt8]) {
-        screenControlTail = Array(bytes.suffix(8))
+        screenControlTail = Array(bytes.suffix(Self.screenControlTailLength))
     }
 
     private func safeReplayStart(in bytes: [UInt8]) -> Int {
@@ -146,11 +172,13 @@ public struct SessionReplayBuffer: Sendable {
                 continue
             }
             if byte == 0x5D {
+                guard isLikelyBareOSCBody(in: bytes, from: index) else { return index }
                 guard let end = oscTerminator(in: bytes, from: index + 1) else { return bytes.count }
                 index = end
                 continue
             }
             if byte == 0x5B {
+                guard isLikelyBareCSIFragment(in: bytes, from: index) else { return index }
                 guard let end = csiTerminator(in: bytes, from: index + 1) else { return bytes.count }
                 index = end
                 continue
@@ -158,6 +186,22 @@ public struct SessionReplayBuffer: Sendable {
             return index
         }
         return index
+    }
+
+    private func isLikelyBareOSCBody(in bytes: [UInt8], from index: Int) -> Bool {
+        var cursor = index + 1
+        var sawDigit = false
+        while cursor < bytes.count, bytes[cursor] >= 0x30, bytes[cursor] <= 0x39 {
+            sawDigit = true
+            cursor += 1
+        }
+        return sawDigit && cursor < bytes.count && bytes[cursor] == 0x3B
+    }
+
+    private func isLikelyBareCSIFragment(in bytes: [UInt8], from index: Int) -> Bool {
+        let next = index + 1
+        guard next < bytes.count else { return false }
+        return (bytes[next] >= 0x30 && bytes[next] <= 0x3F) || (bytes[next] >= 0x20 && bytes[next] <= 0x2F)
     }
 
     private func trailingSafeEnd(in bytes: [UInt8]) -> Int {
@@ -237,12 +281,7 @@ public struct SessionReplayBuffer: Sendable {
     }
 
     private func nextAlternateScreenSequence(in bytes: [UInt8], from index: Int, entering: Bool) -> Range<Int>? {
-        let suffix: UInt8 = entering ? 0x68 : 0x6C
-        let sequences: [[UInt8]] = [
-            [0x1B, 0x5B, 0x3F, 0x34, 0x37, suffix],
-            [0x1B, 0x5B, 0x3F, 0x31, 0x30, 0x34, 0x37, suffix],
-            [0x1B, 0x5B, 0x3F, 0x31, 0x30, 0x34, 0x39, suffix],
-        ]
+        let sequences = entering ? Self.alternateScreenEnterSequences : Self.alternateScreenLeaveSequences
         var best: Range<Int>?
         for sequence in sequences {
             guard let range = firstRange(of: sequence, in: bytes, from: index) else { continue }
@@ -254,10 +293,19 @@ public struct SessionReplayBuffer: Sendable {
     }
 
     private func firstRange(of needle: [UInt8], in bytes: [UInt8], from index: Int) -> Range<Int>? {
-        guard !needle.isEmpty, bytes.count - index >= needle.count else { return nil }
+        guard !needle.isEmpty, index >= 0, bytes.count - index >= needle.count else { return nil }
         var cursor = index
         while cursor + needle.count <= bytes.count {
-            if Array(bytes[cursor ..< cursor + needle.count]) == needle {
+            var offset = 0
+            var matches = true
+            while offset < needle.count {
+                if bytes[cursor + offset] != needle[offset] {
+                    matches = false
+                    break
+                }
+                offset += 1
+            }
+            if matches {
                 return cursor ..< cursor + needle.count
             }
             cursor += 1

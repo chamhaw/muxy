@@ -90,6 +90,18 @@ struct SessionReplayBufferTests {
         #expect(buffer.bytes == [9])
     }
 
+    @Test("removeAll exits alternate screen state")
+    func removeAllExitsAlternateScreenState() {
+        var buffer = SessionReplayBuffer(capacity: 64)
+        buffer.append(Array("shell\n\u{1B}[?1049htui".utf8))
+        #expect(buffer.isAlternateScreenActive)
+        buffer.removeAll()
+        #expect(!buffer.isAlternateScreenActive)
+        #expect(buffer.replayBytes.isEmpty)
+        buffer.append(Array("after".utf8))
+        #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "after")
+    }
+
     @Test("replay starts after a safe line boundary once bytes were discarded")
     func replayStartsAfterLineBoundaryWhenTruncated() {
         var buffer = SessionReplayBuffer(capacity: 6)
@@ -112,11 +124,60 @@ struct SessionReplayBufferTests {
         #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "ready")
     }
 
+    @Test("replay drops a leading bare csi parameter fragment")
+    func replayDropsLeadingBareCSIParameterFragment() {
+        let payload = Array("[?25lready".utf8)
+        var buffer = SessionReplayBuffer(capacity: payload.count)
+        buffer.append(Array("prefix".utf8) + payload)
+        #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "ready")
+    }
+
+    @Test("wrapped replay drops a leading bare csi parameter fragment")
+    func wrappedReplayDropsLeadingBareCSIParameterFragment() {
+        let payload = Array("[?25lready".utf8)
+        var buffer = SessionReplayBuffer(capacity: payload.count)
+        buffer.append(Array("x".utf8))
+        buffer.append(payload)
+        #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "ready")
+    }
+
     @Test("replay keeps leading bracket text when not truncated")
     func replayKeepsLeadingBracketTextWhenNotTruncated() {
         var buffer = SessionReplayBuffer(capacity: 64)
         buffer.append(Array("[notice] ready\n] prompt".utf8))
         #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "[notice] ready\n] prompt")
+    }
+
+    @Test("exact capacity first append keeps leading bracket text")
+    func exactCapacityFirstAppendKeepsLeadingBracketText() {
+        let payload = Array("[notice] ready".utf8)
+        var buffer = SessionReplayBuffer(capacity: payload.count)
+        buffer.append(payload)
+        #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "[notice] ready")
+    }
+
+    @Test("exact capacity first append keeps leading csi-like text")
+    func exactCapacityFirstAppendKeepsLeadingCSILikeText() {
+        let payload = Array("[?25lready".utf8)
+        var buffer = SessionReplayBuffer(capacity: payload.count)
+        buffer.append(payload)
+        #expect(buffer.replayBytes == payload)
+    }
+
+    @Test("truncated replay without newline keeps leading square bracket text")
+    func truncatedReplayWithoutNewlineKeepsLeadingSquareBracketText() {
+        let payload = Array("[notice] ready".utf8)
+        var buffer = SessionReplayBuffer(capacity: payload.count)
+        buffer.append(Array("prefix".utf8) + payload)
+        #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "[notice] ready")
+    }
+
+    @Test("truncated replay without newline keeps leading osc bracket text")
+    func truncatedReplayWithoutNewlineKeepsLeadingOSCBracketText() {
+        let payload = Array("] prompt".utf8)
+        var buffer = SessionReplayBuffer(capacity: payload.count)
+        buffer.append(Array("prefix".utf8) + payload)
+        #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "] prompt")
     }
 
     @Test("replay keeps leading bracket text after a safe line boundary")
@@ -139,6 +200,7 @@ struct SessionReplayBufferTests {
         buffer.append(Array("shell\n\u{1B}[?1049htui".utf8))
         #expect(buffer.isAlternateScreenActive)
         #expect(buffer.replayBytes.isEmpty)
+        #expect(buffer.bytes.isEmpty)
         buffer.append(Array("\u{1B}[?1049lafter".utf8))
         #expect(!buffer.isAlternateScreenActive)
         #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "after")
@@ -152,6 +214,18 @@ struct SessionReplayBufferTests {
         #expect(buffer.isAlternateScreenActive)
         #expect(buffer.replayBytes.isEmpty)
         buffer.append(Array("49lafter".utf8))
+        #expect(!buffer.isAlternateScreenActive)
+        #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "after")
+    }
+
+    @Test("alternate screen detection spans maximum length sequence prefix")
+    func alternateScreenDetectionSpansMaximumLengthSequencePrefix() {
+        var buffer = SessionReplayBuffer(capacity: 64)
+        buffer.append(Array("shell\n\u{1B}[?1049".utf8))
+        buffer.append(Array("htui".utf8))
+        #expect(buffer.isAlternateScreenActive)
+        #expect(buffer.replayBytes.isEmpty)
+        buffer.append(Array("\u{1B}[?1049lafter".utf8))
         #expect(!buffer.isAlternateScreenActive)
         #expect(String(decoding: buffer.replayBytes, as: UTF8.self) == "after")
     }
