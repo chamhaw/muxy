@@ -92,22 +92,31 @@ struct TerminalLaunchCommandTests {
 
     @Test("Remote shell routes fish startup commands through fish syntax")
     func remoteShellRoutesFishStartupCommand() {
-        let command = TerminalLaunchCommand.remoteShellBootstrapCommand(
+        let persistentCommand = TerminalLaunchCommand.remoteShellBootstrapCommand(
             environment: [:],
             workingDirectory: "",
             startupCommand: "printf REMOTE_FISH",
             interactive: true,
             keepsShellOpen: true
         )
+        let closingCommand = TerminalLaunchCommand.remoteShellBootstrapCommand(
+            environment: [:],
+            workingDirectory: "",
+            startupCommand: "printf REMOTE_FISH",
+            interactive: true,
+            keepsShellOpen: false
+        )
 
-        #expect(command.hasPrefix("exec /bin/sh -c "))
-        #expect(command.contains("__muxy_shell_name=${__muxy_shell##*/}"))
-        #expect(command.contains("case \"$__muxy_shell_name\" in fish)"))
-        #expect(command.contains("exec \"$__muxy_shell\" -l -c"))
-        #expect(command.contains("set muxy_status $status"))
-        #expect(command.contains("else exec \"$argv[1]\" -l"))
-        #expect(command.contains("*) exec \"$__muxy_shell\" -l -i -c"))
-        #expect(command.contains("muxy_status=$?"))
+        #expect(persistentCommand.hasPrefix("exec /bin/sh -c "))
+        #expect(persistentCommand.contains("__muxy_shell_name=${__muxy_shell##*/}"))
+        #expect(persistentCommand.contains("case \"$__muxy_shell_name\" in fish)"))
+        #expect(persistentCommand.contains("exec \"$__muxy_shell\" -l -c"))
+        #expect(persistentCommand.contains("set muxy_status $status"))
+        #expect(persistentCommand.contains("else exec \"$argv[1]\" -l"))
+        #expect(persistentCommand.contains("*) exec \"$__muxy_shell\" -l -i -c"))
+        #expect(persistentCommand.contains("muxy_status=$?"))
+        #expect(closingCommand.contains("set muxy_status $status"))
+        #expect(closingCommand.contains("else exit $muxy_status"))
     }
 
     @Test("Remote shell uses configured environment")
