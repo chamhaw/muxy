@@ -897,6 +897,11 @@ final class NotificationSocketServer: @unchecked Sendable {
         guard let appState = NotificationStore.shared.appState else { return }
 
         let source = AIProviderRegistry.shared.notificationSource(for: type)
+        let desktopDeliveryIngress: NotificationStore.DesktopDeliveryIngress? = if case let .aiProvider(providerID) = source {
+            .aiHook(providerID: providerID)
+        } else {
+            nil
+        }
 
         if let paneIDString, let paneID = UUID(uuidString: paneIDString) {
             NotificationStore.shared.add(
@@ -904,7 +909,8 @@ final class NotificationSocketServer: @unchecked Sendable {
                 source: source,
                 title: title,
                 body: body,
-                appState: appState
+                appState: appState,
+                desktopDeliveryIngress: desktopDeliveryIngress
             )
             return
         }
@@ -919,7 +925,8 @@ final class NotificationSocketServer: @unchecked Sendable {
             source: source,
             title: title,
             body: body,
-            appState: appState
+            appState: appState,
+            desktopDeliveryIngress: desktopDeliveryIngress
         )
     }
 
