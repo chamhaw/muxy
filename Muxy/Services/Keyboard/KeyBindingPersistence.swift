@@ -1,16 +1,16 @@
 import Foundation
 
 protocol KeyBindingPersisting {
-    func loadBindings() throws -> [KeyBinding]
-    func saveBindings(_ bindings: [KeyBinding]) throws
+    func loadConfiguration() throws -> KeyBindingConfiguration
+    func saveConfiguration(_ configuration: KeyBindingConfiguration) throws
 }
 
 final class FileKeyBindingPersistence: KeyBindingPersisting {
-    private let reader: CodableFileStore<[SafeKeyBinding]>
-    private let writer: CodableFileStore<[KeyBinding]>
+    private let fileURL: URL
+    private let writer: CodableFileStore<KeyBindingConfiguration>
 
     init(fileURL: URL = MuxyFileStorage.fileURL(filename: "keybindings.json")) {
-        reader = CodableFileStore(fileURL: fileURL)
+        self.fileURL = fileURL
         writer = CodableFileStore(
             fileURL: fileURL,
             options: CodableFileStoreOptions(
@@ -21,13 +21,21 @@ final class FileKeyBindingPersistence: KeyBindingPersisting {
         )
     }
 
-    func loadBindings() throws -> [KeyBinding] {
-        guard let containers = try reader.load() else { return KeyBinding.defaults }
-        return Self.mergeWithDefaults(containers.compactMap(\.binding))
+    func loadConfiguration() throws -> KeyBindingConfiguration {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return KeyBindingConfiguration() }
+        let data = try Data(contentsOf: fileURL)
+        if let configuration = try? JSONDecoder().decode(KeyBindingConfiguration.self, from: data) {
+            return configuration
+        }
+        let containers = try JSONDecoder().decode([SafeKeyBinding].self, from: data)
+        return KeyBindingConfiguration(
+            preset: .muxyDefault,
+            overrides: Self.legacyOverrides(from: containers.compactMap(\.binding))
+        )
     }
 
-    func saveBindings(_ bindings: [KeyBinding]) throws {
-        try writer.save(bindings)
+    func saveConfiguration(_ configuration: KeyBindingConfiguration) throws {
+        try writer.save(configuration)
     }
 
     private static func mergeWithDefaults(_ saved: [KeyBinding]) -> [KeyBinding] {
@@ -47,6 +55,13 @@ final class FileKeyBindingPersistence: KeyBindingPersisting {
             }
             claimedCombos.insert(defaultBinding.combo)
             return defaultBinding
+        }
+    }
+
+    private static func legacyOverrides(from saved: [KeyBinding]) -> [KeyBinding] {
+        let defaultsByAction = Dictionary(uniqueKeysWithValues: KeyBinding.defaults.map { ($0.action, $0) })
+        return mergeWithDefaults(saved).filter { binding in
+            defaultsByAction[binding.action]?.combo != binding.combo
         }
     }
 

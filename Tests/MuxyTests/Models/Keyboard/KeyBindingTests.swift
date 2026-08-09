@@ -81,6 +81,23 @@ struct KeyBindingTests {
         #expect(combos.count == unique.count)
     }
 
+    @Test("Tab navigation preset reserves command-option arrows for tab navigation")
+    func tabNavigationPresetResolvesTabNavigationConflicts() {
+        let combos = Dictionary(uniqueKeysWithValues: KeymapPreset.tabNavigation.bindings.map { ($0.action, $0.combo) })
+
+        #expect(combos[.nextTab] == KeyCombo(key: KeyCombo.rightArrowKey, command: true, option: true))
+        #expect(combos[.previousTab] == KeyCombo(key: KeyCombo.leftArrowKey, command: true, option: true))
+        #expect(combos[.focusPaneLeft]?.isAssigned == false)
+        #expect(combos[.focusPaneRight]?.isAssigned == false)
+    }
+
+    @Test("Legacy browserNavigation preset decodes as tab navigation")
+    func legacyBrowserNavigationPresetDecodesAsTabNavigation() throws {
+        let preset = try JSONDecoder().decode(KeymapPreset.self, from: Data("\"browserNavigation\"".utf8))
+
+        #expect(preset == .tabNavigation)
+    }
+
     @Test("KeyBinding.defaults leaves rename tab unassigned")
     func defaultsRenameTabUnassigned() {
         let combos = Dictionary(uniqueKeysWithValues: KeyBinding.defaults.map { ($0.action, $0.combo) })

@@ -165,7 +165,7 @@ enum SettingsJSONStore {
             guard let value = item.defaultValue else { return nil }
             return (item.key, jsonValue(value))
         })
-        dictionary["shortcuts.app"] = keyBindingsJSONObject(KeyBinding.defaults)
+        dictionary["shortcuts.app"] = keyBindingConfigurationJSONObject(KeyBindingConfiguration())
         dictionary["shortcuts.quickTerminal"] = codableJSONObject(QuickTerminalShortcut.default) ?? [:]
         dictionary["shortcuts.customCommands"] = commandShortcutsJSONObject(CommandShortcutConfiguration())
         dictionary["ai.providers"] = notificationProviderSettings(defaultValue: true)
@@ -178,7 +178,12 @@ enum SettingsJSONStore {
             let value = currentValue(for: item) ?? item.defaultValue.map(jsonValue) ?? NSNull()
             return (item.key, value)
         })
-        dictionary["shortcuts.app"] = keyBindingsJSONObject(KeyBindingStore.shared.bindings)
+        dictionary["shortcuts.app"] = keyBindingConfigurationJSONObject(
+            KeyBindingConfiguration(
+                preset: KeyBindingStore.shared.selectedPreset,
+                overrides: KeyBindingStore.shared.overrides
+            )
+        )
         dictionary["shortcuts.quickTerminal"] = codableJSONObject(QuickTerminalShortcutService.shared.shortcut) ?? [:]
         dictionary["shortcuts.customCommands"] = commandShortcutsJSONObject(CommandShortcutConfiguration(
             prefixCombo: CommandShortcutStore.shared.prefixCombo,
@@ -210,7 +215,7 @@ enum SettingsJSONStore {
             ?? QuickTerminalShortcutService.shared.shortcut
         guard let combo = shortcut.keyCombo else { return }
 
-        let bindings = settings["shortcuts.app"].flatMap(keyBindings(from:))
+        let bindings = settings["shortcuts.app"].flatMap(keyBindingConfiguration(from:))?.effectiveBindings
             ?? KeyBindingStore.shared.bindings
         guard !bindings.contains(where: { $0.combo == combo }) else {
             throw SettingsJSONError.invalidValue("shortcuts.quickTerminal")
@@ -451,7 +456,10 @@ enum SettingsJSONStore {
     private static func validatedSpecialValue(_ value: Any, key: String) throws -> Any {
         switch key {
         case "shortcuts.app":
-            guard let bindings = keyBindings(from: value), !bindings.isEmpty else { throw SettingsJSONError.invalidValue(key) }
+            guard let configuration = keyBindingConfiguration(from: value), configuration.conflict == nil else {
+                throw SettingsJSONError.invalidValue(key)
+            }
+            return keyBindingConfigurationJSONObject(configuration)
         case "shortcuts.quickTerminal":
             guard let shortcut: QuickTerminalShortcut = codableValue(from: value),
                   let canonicalShortcut = shortcut.canonicalizedForCurrentKeyboardLayout(),
@@ -506,8 +514,10 @@ enum SettingsJSONStore {
                 ProjectPickerDefaultLocation.setCustomPath(value)
             }
         case "shortcuts.app":
-            guard let bindings = keyBindings(from: value) else { return true }
-            KeyBindingStore.shared.replaceBindings(bindings)
+            guard let configuration = keyBindingConfiguration(from: value) else { return true }
+            guard KeyBindingStore.shared.replaceConfiguration(configuration) == nil else {
+                throw SettingsJSONError.invalidValue(key)
+            }
         case "shortcuts.quickTerminal":
             guard let shortcut: QuickTerminalShortcut = codableValue(from: value) else { return true }
             try quickTerminalShortcutUpdater(shortcut)
@@ -572,6 +582,28 @@ enum SettingsJSONStore {
         Dictionary(uniqueKeysWithValues: bindings.map { binding in
             (binding.action.rawValue, codableJSONObject(binding.combo) ?? [:])
         })
+    }
+
+    private static func keyBindingConfigurationJSONObject(_ configuration: KeyBindingConfiguration) -> Any {
+        [
+            "preset": configuration.preset.rawValue,
+            "overrides": keyBindingsJSONObject(configuration.overrides),
+        ]
+    }
+
+    private static func keyBindingConfiguration(from value: Any) -> KeyBindingConfiguration? {
+        if let bindings = keyBindings(from: value) {
+            return KeyBindingConfiguration(preset: .muxyDefault, overrides: bindings)
+        }
+        guard let dictionary = value as? [String: Any],
+              let rawPreset = dictionary["preset"] as? String,
+              let preset = KeymapPreset.fromPersistedRawValue(rawPreset),
+              let overridesValue = dictionary["overrides"],
+              let overrides = keyBindings(from: overridesValue)
+        else {
+            return nil
+        }
+        return KeyBindingConfiguration(preset: preset, overrides: overrides)
     }
 
     private static func keyBindings(from value: Any) -> [KeyBinding]? {

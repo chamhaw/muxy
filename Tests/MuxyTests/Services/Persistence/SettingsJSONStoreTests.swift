@@ -335,6 +335,77 @@ struct SettingsJSONStoreTests {
     }
 
     @Test
+    func appShortcutPresetImportsAndExportsOverrides() throws {
+        let snapshot = SettingsJSONStoreSnapshot.capture(keys: [])
+        let originalConfiguration = KeyBindingConfiguration(
+            preset: KeyBindingStore.shared.selectedPreset,
+            overrides: KeyBindingStore.shared.overrides
+        )
+        defer {
+            KeyBindingStore.shared.replaceConfiguration(originalConfiguration)
+            snapshot.restore()
+        }
+
+        try SettingsJSONStore.saveUserSettingsText("""
+        {
+          "shortcuts.app": {
+            "preset": "tabNavigation",
+            "overrides": {
+              "nextTab": {
+                "key": "u",
+                "modifiers": \(NSEvent.ModifierFlags.command.rawValue)
+              }
+            }
+          }
+        }
+        """)
+
+        #expect(KeyBindingStore.shared.selectedPreset == .tabNavigation)
+        #expect(KeyBindingStore.shared.combo(for: .nextTab) == KeyCombo(key: "u", command: true))
+        #expect(KeyBindingStore.shared.combo(for: .previousTab) == KeyCombo(key: KeyCombo.leftArrowKey, command: true, option: true))
+
+        let text = try String(contentsOf: SettingsJSONStore.userSettingsURL, encoding: .utf8)
+        let object = try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+        let shortcuts = try #require(object["shortcuts.app"] as? [String: Any])
+        #expect(shortcuts["preset"] as? String == "tabNavigation")
+    }
+
+    @Test
+    func appShortcutPresetImportRejectsDuplicateEffectiveShortcuts() throws {
+        let snapshot = SettingsJSONStoreSnapshot.capture(keys: [])
+        let originalConfiguration = KeyBindingConfiguration(
+            preset: KeyBindingStore.shared.selectedPreset,
+            overrides: KeyBindingStore.shared.overrides
+        )
+        let originalText = "{\"unchanged\":true}\n"
+        defer {
+            KeyBindingStore.shared.replaceConfiguration(originalConfiguration)
+            snapshot.restore()
+        }
+        try originalText.write(to: SettingsJSONStore.userSettingsURL, atomically: true, encoding: .utf8)
+
+        #expect(throws: SettingsJSONError.self) {
+            try SettingsJSONStore.saveUserSettingsText("""
+            {
+              "shortcuts.app": {
+                "preset": "tabNavigation",
+                "overrides": {
+                  "focusPaneLeft": {
+                    "key": "leftarrow",
+                    "modifiers": \(NSEvent.ModifierFlags.command.rawValue | NSEvent.ModifierFlags.option.rawValue)
+                  }
+                }
+              }
+            }
+            """)
+        }
+
+        #expect(KeyBindingStore.shared.selectedPreset == originalConfiguration.preset)
+        #expect(KeyBindingStore.shared.overrides == originalConfiguration.overrides)
+        #expect(try String(contentsOf: SettingsJSONStore.userSettingsURL, encoding: .utf8) == originalText)
+    }
+
+    @Test
     func omittedKnownSettingsRemainUnchanged() throws {
         let snapshot = SettingsJSONStoreSnapshot.capture(keys: [MobileServerService.portKey])
         defer { snapshot.restore() }

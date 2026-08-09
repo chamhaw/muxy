@@ -710,6 +710,9 @@
 "Reconnect to the background terminal session" = "Reconnect to the background terminal session";
 "Reset" = "Reset";
 "Reset All" = "Reset All";
+"Keymap" = "Keymap";
+"Muxy Default" = "Muxy Default";
+"Keymap has a duplicate shortcut for \"%@\" and \"%@\"." = "Keymap has a duplicate shortcut for \"%@\" and \"%@\".";
 "Reset Composer Size" = "Reset Composer Size";
 "Reset Icon Color" = "Reset Icon Color";
 "Reset Shortcut" = "Reset Shortcut";

@@ -82,6 +82,100 @@ struct KeyBindingStoreTests {
         #expect(store.combo(for: .refreshWorktrees) == KeyCombo(key: "r", command: true, option: true))
     }
 
+    @Test("preset changes preserve user shortcut overrides")
+    func presetChangesPreserveUserShortcutOverrides() throws {
+        let store = KeyBindingStore(persistence: StubKeyBindingPersistence(configuration: KeyBindingConfiguration()))
+        let customCombo = KeyCombo(key: "u", command: true, option: true)
+        let keyCode = try #require(KeyCombo.keyCode(for: "u"))
+        let nextTabEvent = try keyEvent(
+            characters: "U",
+            charactersIgnoringModifiers: "u",
+            keyCode: keyCode,
+            modifiers: [.command, .option]
+        )
+
+        store.updateBinding(action: .nextTab, combo: customCombo)
+        store.selectPreset(.tabNavigation)
+
+        #expect(store.selectedPreset == .tabNavigation)
+        #expect(store.combo(for: .nextTab) == customCombo)
+        #expect(store.combo(for: .previousTab) == KeyCombo(key: KeyCombo.leftArrowKey, command: true, option: true))
+        #expect(store.combo(for: .focusPaneLeft).isAssigned == false)
+        #expect(store.action(for: nextTabEvent, scopes: [.mainWindow]) == .nextTab)
+    }
+
+    @Test("legacy default keybindings allow preset changes")
+    func legacyDefaultKeybindingsAllowPresetChanges() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("keybindings-\(UUID().uuidString).json")
+        let legacyBindings = KeyBinding.defaults
+        try JSONEncoder().encode(legacyBindings).write(to: url, options: .atomic)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let store = KeyBindingStore(persistence: FileKeyBindingPersistence(fileURL: url))
+
+        #expect(store.selectedPreset == .muxyDefault)
+        #expect(store.overrides.isEmpty)
+        #expect(store.combo(for: .nextTab) == KeyCombo(key: "]", command: true))
+        #expect(store.selectPreset(.tabNavigation) == nil)
+        #expect(store.combo(for: .nextTab) == KeyCombo(key: KeyCombo.rightArrowKey, command: true, option: true))
+    }
+
+    @Test("legacy custom keybindings remain overrides")
+    func legacyCustomKeybindingsRemainOverrides() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("keybindings-\(UUID().uuidString).json")
+        let customBinding = KeyBinding(action: .nextTab, combo: KeyCombo(key: "u", command: true, option: true))
+        let legacyBindings = KeyBinding.defaults.map { binding in
+            binding.action == customBinding.action ? customBinding : binding
+        }
+        try JSONEncoder().encode(legacyBindings).write(to: url, options: .atomic)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let store = KeyBindingStore(persistence: FileKeyBindingPersistence(fileURL: url))
+
+        #expect(store.overrides == [customBinding])
+        #expect(store.selectPreset(.tabNavigation) == nil)
+        #expect(store.combo(for: .nextTab) == customBinding.combo)
+        #expect(store.combo(for: .previousTab) == KeyCombo(key: KeyCombo.leftArrowKey, command: true, option: true))
+    }
+
+    @Test("preset changes reject duplicate effective shortcuts")
+    func presetChangesRejectDuplicateEffectiveShortcuts() {
+        let duplicate = KeyBinding(
+            action: .focusPaneLeft,
+            combo: KeyCombo(key: KeyCombo.leftArrowKey, command: true, option: true)
+        )
+        let store = KeyBindingStore(persistence: StubKeyBindingPersistence(configuration: KeyBindingConfiguration(overrides: [duplicate])))
+
+        let conflict = store.selectPreset(.tabNavigation)
+
+        #expect(conflict?.firstAction == .focusPaneLeft)
+        #expect(conflict?.secondAction == .previousTab)
+        #expect(store.selectedPreset == .muxyDefault)
+    }
+
+    @Test("configuration replacement rejects duplicate effective shortcuts")
+    func configurationReplacementRejectsDuplicateEffectiveShortcuts() {
+        let store = KeyBindingStore(persistence: StubKeyBindingPersistence(configuration: KeyBindingConfiguration()))
+        let configuration = KeyBindingConfiguration(
+            preset: .tabNavigation,
+            overrides: [
+                KeyBinding(
+                    action: .focusPaneLeft,
+                    combo: KeyCombo(key: KeyCombo.leftArrowKey, command: true, option: true)
+                ),
+            ]
+        )
+
+        let conflict = store.replaceConfiguration(configuration)
+
+        #expect(conflict?.firstAction == .focusPaneLeft)
+        #expect(conflict?.secondAction == .previousTab)
+        #expect(store.selectedPreset == .muxyDefault)
+        #expect(store.overrides.isEmpty)
+    }
+
     @Test("action can be unassigned")
     func actionCanBeUnassigned() throws {
         let persistence = StubKeyBindingPersistence(bindings: KeyBinding.defaults)
@@ -242,17 +336,23 @@ struct KeyBindingStoreTests {
     }
 
     private final class StubKeyBindingPersistence: KeyBindingPersisting {
-        private let storedBindings: [KeyBinding]
+        private var storedConfiguration: KeyBindingConfiguration
 
         init(bindings: [KeyBinding]) {
-            storedBindings = bindings
+            storedConfiguration = KeyBindingConfiguration(preset: .muxyDefault, overrides: bindings)
         }
 
-        func loadBindings() throws -> [KeyBinding] {
-            storedBindings
+        init(configuration: KeyBindingConfiguration) {
+            storedConfiguration = configuration
         }
 
-        func saveBindings(_: [KeyBinding]) throws {}
+        func loadConfiguration() throws -> KeyBindingConfiguration {
+            storedConfiguration
+        }
+
+        func saveConfiguration(_ configuration: KeyBindingConfiguration) throws {
+            storedConfiguration = configuration
+        }
     }
 
     private struct EventCreationError: Error {}

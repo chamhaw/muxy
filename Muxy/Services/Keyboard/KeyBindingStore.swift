@@ -8,7 +8,9 @@ private let logger = Logger(subsystem: "app.muxy", category: "KeyBindingStore")
 final class KeyBindingStore {
     static let shared = KeyBindingStore()
 
-    private(set) var bindings: [KeyBinding] = []
+    private(set) var selectedPreset = KeymapPreset.muxyDefault
+    private(set) var overrides: [KeyBinding] = []
+    private(set) var bindings = KeymapPreset.muxyDefault.bindings
     private let persistence: any KeyBindingPersisting
 
     init(persistence: any KeyBindingPersisting = FileKeyBindingPersistence()) {
@@ -27,32 +29,64 @@ final class KeyBindingStore {
     }
 
     func updateBinding(action: ShortcutAction, combo: KeyCombo) {
-        guard let index = bindings.firstIndex(where: { $0.action == action }) else {
-            bindings.append(KeyBinding(action: action, combo: combo))
-            save()
-            return
+        let override = KeyBinding(action: action, combo: combo)
+        if let index = overrides.firstIndex(where: { $0.action == action }) {
+            overrides[index] = override
+        } else {
+            overrides.append(override)
         }
-        bindings[index].combo = combo
+        rebuildBindings()
         save()
     }
 
     func resetToDefaults() {
-        bindings = KeyBinding.defaults
+        overrides = []
+        rebuildBindings()
         save()
     }
 
     func replaceBindings(_ newBindings: [KeyBinding]) {
-        bindings = newBindings
+        selectedPreset = .muxyDefault
+        overrides = newBindings
+        rebuildBindings()
         save()
     }
 
-    func resetBinding(action: ShortcutAction) {
-        guard let defaultBinding = KeyBinding.defaults.first(where: { $0.action == action }) else {
-            bindings.removeAll { $0.action == action }
+    @discardableResult
+    func replaceConfiguration(_ configuration: KeyBindingConfiguration) -> KeyBindingConflict? {
+        guard let conflict = configuration.conflict else {
+            selectedPreset = configuration.preset
+            overrides = configuration.overrides
+            rebuildBindings()
             save()
-            return
+            return nil
         }
-        updateBinding(action: defaultBinding.action, combo: defaultBinding.combo)
+        return conflict
+    }
+
+    @discardableResult
+    func selectPreset(_ preset: KeymapPreset) -> KeyBindingConflict? {
+        guard selectedPreset != preset else { return nil }
+        let configuration = KeyBindingConfiguration(preset: preset, overrides: overrides)
+        guard let conflict = configuration.conflict else {
+            selectedPreset = preset
+            rebuildBindings()
+            save()
+            return nil
+        }
+        return conflict
+    }
+
+    private func applyConfiguration(_ configuration: KeyBindingConfiguration) {
+        selectedPreset = configuration.preset
+        overrides = configuration.overrides
+        rebuildBindings()
+    }
+
+    func resetBinding(action: ShortcutAction) {
+        overrides.removeAll { $0.action == action }
+        rebuildBindings()
+        save()
     }
 
     func isRegisteredShortcut(event: NSEvent, scopes: Set<ShortcutScope>) -> Bool {
@@ -89,19 +123,31 @@ final class KeyBindingStore {
 
     private func load() {
         do {
-            bindings = try persistence.loadBindings()
+            let configuration = try persistence.loadConfiguration()
+            guard configuration.conflict == nil else {
+                logger.error("Failed to load key bindings: duplicate shortcut assignments")
+                applyConfiguration(KeyBindingConfiguration())
+                return
+            }
+            applyConfiguration(configuration)
         } catch {
             logger.error("Failed to load key bindings: \(error.localizedDescription)")
-            bindings = KeyBinding.defaults
+            selectedPreset = .muxyDefault
+            overrides = []
+            rebuildBindings()
         }
     }
 
     private func save() {
         do {
-            try persistence.saveBindings(bindings)
+            try persistence.saveConfiguration(KeyBindingConfiguration(preset: selectedPreset, overrides: overrides))
             SettingsJSONStore.syncUserSettingsFileWithCurrentSettings()
         } catch {
             logger.error("Failed to save key bindings: \(error.localizedDescription)")
         }
+    }
+
+    private func rebuildBindings() {
+        bindings = KeyBindingConfiguration(preset: selectedPreset, overrides: overrides).effectiveBindings
     }
 }

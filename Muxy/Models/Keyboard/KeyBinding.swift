@@ -338,7 +338,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-struct KeyBinding: Codable, Identifiable {
+struct KeyBinding: Codable, Equatable, Identifiable {
     let action: ShortcutAction
     var combo: KeyCombo
 
@@ -413,4 +413,106 @@ struct KeyBinding: Codable, Identifiable {
         Self(action: .toggleExtensionConsole, combo: KeyCombo(key: "`", command: true)),
         Self(action: .inspectElement, combo: KeyCombo(key: "i", command: true, option: true)),
     ]
+}
+
+enum KeymapPreset: String, Codable, CaseIterable, Identifiable {
+    case muxyDefault
+    case tabNavigation
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .muxyDefault: "Muxy Default"
+        case .tabNavigation: "Tab Navigation"
+        }
+    }
+
+    var bindings: [KeyBinding] {
+        switch self {
+        case .muxyDefault:
+            KeyBinding.defaults
+        case .tabNavigation:
+            KeyBinding.defaults.map { binding in
+                switch binding.action {
+                case .nextTab:
+                    KeyBinding(action: binding.action, combo: KeyCombo(key: KeyCombo.rightArrowKey, command: true, option: true))
+                case .previousTab:
+                    KeyBinding(action: binding.action, combo: KeyCombo(key: KeyCombo.leftArrowKey, command: true, option: true))
+                case .focusPaneLeft,
+                     .focusPaneRight:
+                    KeyBinding(action: binding.action, combo: KeyCombo(key: "", modifiers: 0))
+                default:
+                    binding
+                }
+            }
+        }
+    }
+
+    static func fromPersistedRawValue(_ rawValue: String) -> KeymapPreset? {
+        if rawValue == "browserNavigation" {
+            return .tabNavigation
+        }
+        return KeymapPreset(rawValue: rawValue)
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        guard let preset = Self.fromPersistedRawValue(rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown keymap preset: \(rawValue)"
+            )
+        }
+        self = preset
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+struct KeyBindingConfiguration: Codable, Equatable {
+    var preset: KeymapPreset
+    var overrides: [KeyBinding]
+
+    init(preset: KeymapPreset = .muxyDefault, overrides: [KeyBinding] = []) {
+        self.preset = preset
+        self.overrides = overrides
+    }
+
+    var effectiveBindings: [KeyBinding] {
+        var bindings = preset.bindings
+        for override in overrides {
+            if let index = bindings.firstIndex(where: { $0.action == override.action }) {
+                bindings[index] = override
+            } else {
+                bindings.append(override)
+            }
+        }
+        return bindings
+    }
+
+    var conflict: KeyBindingConflict? {
+        var claimedActions: [KeyCombo: ShortcutAction] = [:]
+        for binding in effectiveBindings where binding.combo.isAssigned {
+            if let action = claimedActions[binding.combo] {
+                return KeyBindingConflict(
+                    combo: binding.combo,
+                    firstAction: action,
+                    secondAction: binding.action
+                )
+            }
+            claimedActions[binding.combo] = binding.action
+        }
+        return nil
+    }
+}
+
+struct KeyBindingConflict: Equatable {
+    let combo: KeyCombo
+    let firstAction: ShortcutAction
+    let secondAction: ShortcutAction
 }

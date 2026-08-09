@@ -5,6 +5,7 @@ struct KeyboardShortcutsSettingsView: View {
     @State private var recordingAction: ShortcutAction?
     @State private var searchText = ""
     @State private var conflictWarning: (action: ShortcutAction, message: String)?
+    @State private var presetConflictMessage: String?
     @State private var recordingExtensionShortcutID: String?
     @State private var extensionConflictWarning: (id: String, message: String)?
 
@@ -20,29 +21,54 @@ struct KeyboardShortcutsSettingsView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(SettingsStyle.mutedForeground)
-                    .font(.system(size: SettingsMetrics.labelFontSize))
-                TextField(L10n.string("Search shortcuts"), text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: SettingsMetrics.labelFontSize))
-                    .foregroundStyle(SettingsStyle.foreground)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(SettingsStyle.surface, in: RoundedRectangle(cornerRadius: 6))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Picker(L10n.string("Keymap"), selection: Binding(
+                    get: { store.selectedPreset },
+                    set: { preset in
+                        if let conflict = store.selectPreset(preset) {
+                            presetConflictMessage = keymapConflictMessage(conflict)
+                        } else {
+                            presetConflictMessage = nil
+                        }
+                    }
+                )) {
+                    ForEach(KeymapPreset.allCases) { preset in
+                        Text(L10n.string(key: preset.displayName)).tag(preset)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 160)
 
-            Button(L10n.string("Reset All")) {
-                store.resetToDefaults()
-                recordingAction = nil
-                recordingExtensionShortcutID = nil
-                conflictWarning = nil
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(SettingsStyle.mutedForeground)
+                        .font(.system(size: SettingsMetrics.labelFontSize))
+                    TextField(L10n.string("Search shortcuts"), text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: SettingsMetrics.labelFontSize))
+                        .foregroundStyle(SettingsStyle.foreground)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(SettingsStyle.surface, in: RoundedRectangle(cornerRadius: 6))
+
+                Button(L10n.string("Reset All")) {
+                    store.resetToDefaults()
+                    recordingAction = nil
+                    recordingExtensionShortcutID = nil
+                    conflictWarning = nil
+                    presetConflictMessage = nil
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: SettingsMetrics.footnoteFontSize))
+                .foregroundStyle(SettingsStyle.mutedForeground)
             }
-            .buttonStyle(.plain)
-            .font(.system(size: SettingsMetrics.footnoteFontSize))
-            .foregroundStyle(SettingsStyle.mutedForeground)
+            if let presetConflictMessage {
+                Text(presetConflictMessage)
+                    .font(.system(size: SettingsMetrics.footnoteFontSize))
+                    .foregroundStyle(MuxyTheme.warning)
+            }
         }
         .padding(SettingsMetrics.horizontalPadding)
     }
@@ -216,6 +242,14 @@ struct KeyboardShortcutsSettingsView: View {
         }
         store.resetBinding(action: action)
         conflictWarning = nil
+    }
+
+    private func keymapConflictMessage(_ conflict: KeyBindingConflict) -> String {
+        String(
+            format: L10n.string(key: "Keymap has a duplicate shortcut for \"%@\" and \"%@\"."),
+            L10n.string(key: conflict.firstAction.displayName),
+            L10n.string(key: conflict.secondAction.displayName)
+        )
     }
 }
 
