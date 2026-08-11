@@ -110,13 +110,20 @@ struct AIAgentLaunchProviderTests {
         ])
     }
 
-    @Test("agent tab menus mark unavailable local providers as not installed")
-    func unavailableLocalProviderIsMarkedNotInstalled() {
-        let provider = AgentTabLaunchTestProvider(executablePath: nil)
-        let options = AgentTabLaunchOption.resolveLocal(providers: [provider])
+    @Test("agent tabs launch installed local providers through the user shell")
+    func localAgentTabCommand() {
+        let provider = AgentTabLaunchTestProvider(executablePath: "/tmp/Agent Tools/codex")
 
-        #expect(options.first?.command == nil)
-        #expect(options.first?.title == "Test Agent · Not installed")
+        #expect(AgentTabLaunchCommand.local(
+            provider: provider,
+            availableExecutables: ["test-agent"]
+        ) == "test-agent")
+    }
+
+    @Test("agent tabs omit unavailable local providers")
+    func unavailableLocalAgentTabCommand() {
+        let provider = AgentTabLaunchTestProvider(executablePath: nil)
+        #expect(AgentTabLaunchCommand.local(provider: provider, availableExecutables: []) == nil)
     }
 
     @Test("agent tabs escape remote executable names")
@@ -126,25 +133,33 @@ struct AIAgentLaunchProviderTests {
         #expect(AgentTabLaunchCommand.remote(provider: provider) == "test-agent")
     }
 
-    @Test("agent tab menus launch available local providers through shell commands")
-    func launchOptionsUseShellCommandAfterAvailabilityCheck() {
+    @Test("agent launch options resolve availability through the login shell once")
+    @MainActor
+    func launchOptionsResolveLoginShellAvailability() async {
         let provider = CountingAgentTabLaunchTestProvider()
+        var resolutionCount = 0
 
-        let options = AgentTabLaunchOption.resolveLocal(providers: [provider])
+        let options = await AgentTabLaunchOption.resolveLocal(providers: [provider]) { commands in
+            resolutionCount += 1
+            #expect(commands == ["test-agent"])
+            return ["test-agent"]
+        }
 
-        #expect(provider.resolutionCount == 1)
+        #expect(provider.resolutionCount == 0)
+        #expect(resolutionCount == 1)
         #expect(options.first?.command == "test-agent")
         #expect(options.first?.title == "Test Agent")
     }
 
     @Test("agent tabs shell-escape configured local executable names")
-    func localAgentTabCommandEscapesConfiguredExecutable() {
+    @MainActor
+    func localAgentTabCommandEscapesConfiguredExecutable() async {
         let provider = AgentTabLaunchTestProvider(
             executable: "test agent",
             executablePath: "/tmp/test-agent"
         )
 
-        let options = AgentTabLaunchOption.resolveLocal(providers: [provider])
+        let options = await AgentTabLaunchOption.resolveLocal(providers: [provider]) { _ in ["test agent"] }
 
         #expect(options.first?.command == "'test agent'")
     }

@@ -140,13 +140,18 @@ final class TerminalTab: Identifiable {
                 snapshot.currentWorkingDirectory,
                 projectPath: snapshot.projectPath
             )
+            let restoresStartupCommand = snapshot.startupCommandRestoration == .restore
             content = .terminal(TerminalPaneState(
                 id: snapshot.paneID ?? UUID(),
                 sessionID: snapshot.paneSessionID,
                 projectPath: snapshot.projectPath,
                 title: snapshot.paneTitle,
                 usesDefaultTitle: snapshot.paneUsesDefaultTitle,
-                initialWorkingDirectory: restoredWorkingDirectory
+                initialWorkingDirectory: restoredWorkingDirectory,
+                startupCommand: restoresStartupCommand ? snapshot.startupCommand : nil,
+                startupCommandInteractive: snapshot.startupCommandInteractive ?? false,
+                closesOnStartupCommandExit: snapshot.closesOnStartupCommandExit ?? true,
+                startupCommandRestoration: restoresStartupCommand ? .restore : .initialLaunchOnly
             ))
         case .extensionWebView:
             if let extensionID = snapshot.extensionID,
@@ -178,7 +183,12 @@ final class TerminalTab: Identifiable {
     }
 
     func snapshot() -> TerminalTabSnapshot {
-        TerminalTabSnapshot(
+        let pane = content.pane
+        let restorableStartupCommand = pane?.startupCommandRestoration == .restore ? pane?.startupCommand : nil
+        let paneTitle = pane?.startupCommandRestoration == .initialLaunchOnly && pane?.title == pane?.startupCommand
+            ? nil
+            : pane?.title
+        return TerminalTabSnapshot(
             kind: content.kind,
             id: id,
             parentTabID: parentTabID,
@@ -187,11 +197,15 @@ final class TerminalTab: Identifiable {
             customIcon: customIcon,
             isPinned: isPinned,
             projectPath: content.projectPath,
-            paneTitle: extensionTabDefaultTitle ?? content.pane?.title,
-            paneUsesDefaultTitle: content.pane?.usesDefaultTitle,
-            paneID: content.pane?.id,
-            paneSessionID: content.pane?.sessionID,
-            currentWorkingDirectory: content.pane?.currentWorkingDirectory,
+            paneTitle: extensionTabDefaultTitle ?? paneTitle,
+            paneUsesDefaultTitle: paneTitle == nil ? nil : pane?.usesDefaultTitle,
+            paneID: pane?.id,
+            paneSessionID: pane?.sessionID,
+            currentWorkingDirectory: pane?.currentWorkingDirectory,
+            startupCommand: restorableStartupCommand,
+            startupCommandInteractive: restorableStartupCommand == nil ? nil : pane?.startupCommandInteractive,
+            closesOnStartupCommandExit: restorableStartupCommand == nil ? nil : pane?.closesOnStartupCommandExit,
+            startupCommandRestoration: restorableStartupCommand == nil ? nil : .restore,
             extensionID: content.extensionState?.extensionID,
             extensionTabTypeID: content.extensionState?.tabTypeID,
             extensionTabData: content.extensionState?.data,
