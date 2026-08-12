@@ -92,6 +92,15 @@ struct AIProviderRegistryTests {
         }
     }
 
+    @Test("Kiro icon view box matches its visible mark bounds")
+    func kiroIconUsesVisibleMarkBounds() throws {
+        let iconURL = RepositoryRoot.find()
+            .appendingPathComponent("Muxy/Resources/ProviderIcons/kiro.svg")
+        let svg = try String(contentsOf: iconURL, encoding: .utf8)
+
+        #expect(svg.contains("viewBox=\"259 128 707 933\""))
+    }
+
     @Test("prepareForInstallation stages resources but skips PATH hydration without dev opt-in")
     func prepareForInstallationStagesWithoutDevOptIn() async {
         let staging = StagingRecorder()
