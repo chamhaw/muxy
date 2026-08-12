@@ -114,26 +114,26 @@ struct AgentTabLaunchOption: Identifiable {
     }
 
     static func resolveLocal(providers: [any AIAgentLaunchProvider]) -> [Self] {
-        providers.map { provider in
+        prioritizeLaunchable(providers.map { provider in
             Self(
                 provider: provider,
                 command: AgentTabLaunchCommand.local(provider: provider)
             )
-        }
+        })
     }
 
     static func resolveRemote(
         providers: [any AIAgentLaunchProvider],
         availableProviderIDs: Set<String>
     ) -> [Self] {
-        providers.map { provider in
+        prioritizeLaunchable(providers.map { provider in
             Self(
                 provider: provider,
                 command: availableProviderIDs.contains(provider.id)
                     ? AgentTabLaunchCommand.remote(provider: provider)
                     : nil
             )
-        }
+        })
     }
 
     @MainActor
@@ -149,6 +149,10 @@ struct AgentTabLaunchOption: Identifiable {
             destination: destination
         )
         return resolveRemote(providers: providers, availableProviderIDs: availableProviderIDs)
+    }
+
+    private static func prioritizeLaunchable(_ options: [Self]) -> [Self] {
+        options.filter { $0.command != nil } + options.filter { $0.command == nil }
     }
 }
 

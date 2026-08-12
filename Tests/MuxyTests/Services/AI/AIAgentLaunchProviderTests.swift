@@ -178,6 +178,37 @@ struct AIAgentLaunchProviderTests {
         #expect(unavailable.first?.title == "Test Agent · Not installed")
     }
 
+    @Test("local launch options place installed providers before unavailable providers without reordering either group")
+    func localLaunchOptionsPrioritizeLaunchableProviders() {
+        let providers: [any AIAgentLaunchProvider] = [
+            OrderedAgentTabLaunchTestProvider(id: "unavailable-first", executablePath: nil),
+            OrderedAgentTabLaunchTestProvider(id: "available-first", executablePath: "/tmp/available-first"),
+            OrderedAgentTabLaunchTestProvider(id: "unavailable-second", executablePath: nil),
+            OrderedAgentTabLaunchTestProvider(id: "available-second", executablePath: "/tmp/available-second"),
+        ]
+
+        let options = AgentTabLaunchOption.resolveLocal(providers: providers)
+
+        #expect(options.map(\.id) == ["available-first", "available-second", "unavailable-first", "unavailable-second"])
+    }
+
+    @Test("remote launch options place available providers before unavailable providers without reordering either group")
+    func remoteLaunchOptionsPrioritizeLaunchableProviders() {
+        let providers: [any AIAgentLaunchProvider] = [
+            OrderedAgentTabLaunchTestProvider(id: "unavailable-first", executablePath: nil),
+            OrderedAgentTabLaunchTestProvider(id: "available-first", executablePath: nil),
+            OrderedAgentTabLaunchTestProvider(id: "unavailable-second", executablePath: nil),
+            OrderedAgentTabLaunchTestProvider(id: "available-second", executablePath: nil),
+        ]
+
+        let options = AgentTabLaunchOption.resolveRemote(
+            providers: providers,
+            availableProviderIDs: ["available-first", "available-second"]
+        )
+
+        #expect(options.map(\.id) == ["available-first", "available-second", "unavailable-first", "unavailable-second"])
+    }
+
     @Test("remote provider availability uses a login shell and parses marked output")
     @MainActor
     func remoteProviderAvailability() async throws {
@@ -326,5 +357,21 @@ private final class CountingAgentTabLaunchTestProvider: AIAgentLaunchProvider {
 
     func isAgentCLIInstalled() -> Bool {
         agentCLIExecutablePath() != nil
+    }
+}
+
+private struct OrderedAgentTabLaunchTestProvider: AIAgentLaunchProvider {
+    let id: String
+    let executablePath: String?
+
+    var displayName: String { id }
+    let iconName = "sparkles"
+
+    var agentLaunchConfiguration: AIAgentLaunchConfiguration {
+        AIAgentLaunchConfiguration(executable: id, headlessArguments: [])
+    }
+
+    func agentCLIExecutablePath() -> String? {
+        executablePath
     }
 }
