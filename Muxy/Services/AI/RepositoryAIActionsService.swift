@@ -140,6 +140,7 @@ final class RepositoryAIActionsService {
         guard let executable = provider.agentCLIExecutablePath() else { return nil }
         return AIAgentLaunchConfiguration(
             executable: executable,
+            interactiveArguments: configuration.interactiveArguments,
             headlessArguments: configuration.headlessArguments,
             modelArgument: configuration.modelArgument,
             environment: configuration.environment

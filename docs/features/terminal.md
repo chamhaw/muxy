@@ -243,13 +243,15 @@ Splitting creates a child pane inside the current top-level tab. Each pane keeps
 
 Dragging a top-level tab toward an edge docks the whole tab beside another top-level tab. Its child-pane layout moves with it and remains independent from the neighboring tab's child panes.
 
-The Agents Focused layout keeps the normal top-level tab strip in the title bar and limits sidebar tab entries to detected AI agents, including idle sessions. An entry disappears as soon as its agent process exits, even when the tab keeps running a shell. Projects and worktrees remain visible when they have no agent sessions, and their add menu can start a new tab with any available agent provider. Clicking a project or worktree row activates it; clicking the already active row expands or collapses its agent list. A project with no tabs offers the same launchers as icons — a terminal plus one monochrome icon per installed provider — instead of the plain new-tab button. Tabs started from this menu appear immediately. Local launch attribution is confirmed by process detection and removed if the command exits before confirmation. Remote availability is checked through the configured SSH connection before the menu enables a provider.
+ The Agents Focused layout keeps the normal top-level tab strip in the title bar and limits sidebar tab entries to detected AI agents, including idle sessions. An entry disappears as soon as its agent process exits, even when the tab keeps running a shell. Projects and worktrees remain visible when they have no agent sessions, and their add menu can start a new tab with any available agent provider, including Kiro CLI when `kiro-cli` is installed. Kiro CLI appears beside Claude Code, Codex, Cursor, GitHub Copilot, Droid, Grok, OpenCode, and Pi in agent launch and repository AI metadata provider lists. Clicking a project or worktree row activates it; clicking the already active row expands or collapses its agent list. When project sorting is set to Manual, local project headers can be dragged to reorder project blocks while their children remain grouped with the project. Agent rows can be dragged only within their current worktree and docked tab group without changing non-agent tab positions. A project with no tabs offers the same launchers as icons — a terminal plus one monochrome icon per installed provider — instead of the plain new-tab button. Tabs started from this menu appear immediately. Local launch attribution is confirmed by process detection and removed if the command exits before confirmation. Remote availability is checked through the configured SSH connection before the menu enables a provider.
 
 ## Notifications from the terminal
 
 OSC 9 and OSC 777 notification escape sequences are routed into Muxy's notification panel and (optionally) macOS notifications.
 
 For AI coding agents (Claude Code, Codex, Cursor, Droid, Grok, OpenCode, Pi), Muxy uses hook-based lifecycle events rather than escape sequences — see [AI notifications](ai-notifications.md).
+
+Provider hook support is separate from launch support. Kiro CLI supports agent launch, process detection, and repository AI metadata, but is not a hook-based lifecycle notification provider.
 
 ## Quick-select labels
 

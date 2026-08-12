@@ -10,6 +10,7 @@ struct AIAgentDetectorTests {
         AIAgentExecutable(providerID: "codex", executableNames: ["codex"]),
         AIAgentExecutable(providerID: "cursor", executableNames: ["cursor-agent", "cursor"]),
         AIAgentExecutable(providerID: "opencode", executableNames: ["opencode"]),
+        AIAgentExecutable(providerID: "kiro", executableNames: ["kiro-cli"]),
     ]
 
     @Test("matches a bare executable name to its provider id")
@@ -22,6 +23,7 @@ struct AIAgentDetectorTests {
     func matchesAlternateName() {
         #expect(AIAgentDetector.providerID(forProcessName: "cursor-agent", executables: executables) == "cursor")
         #expect(AIAgentDetector.providerID(forProcessName: "cursor", executables: executables) == "cursor")
+        #expect(AIAgentDetector.providerID(forProcessName: "kiro-cli", executables: executables) == "kiro")
     }
 
     @Test("strips a full path before matching")

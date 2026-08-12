@@ -8,17 +8,20 @@ struct AIAgentInvocation: Equatable {
 
 struct AIAgentLaunchConfiguration: Equatable {
     let executable: String
+    let interactiveArguments: [String]
     let headlessArguments: [String]
     let modelArgument: String?
     let environment: [String: String]
 
     init(
         executable: String,
+        interactiveArguments: [String] = [],
         headlessArguments: [String],
         modelArgument: String? = "--model",
         environment: [String: String] = [:]
     ) {
         self.executable = executable
+        self.interactiveArguments = interactiveArguments
         self.headlessArguments = headlessArguments
         self.modelArgument = modelArgument
         self.environment = environment
@@ -49,12 +52,17 @@ protocol AIAgentLaunchProvider {
     var displayName: String { get }
     var iconName: String { get }
     var agentLaunchConfiguration: AIAgentLaunchConfiguration { get }
+    var agentExecutableNames: [String] { get }
 
     func agentCLIExecutablePath() -> String?
     func isAgentCLIInstalled() -> Bool
 }
 
 extension AIAgentLaunchProvider {
+    var agentExecutableNames: [String] {
+        [agentLaunchConfiguration.executable]
+    }
+
     func agentCLIExecutablePath() -> String? {
         ProviderExecutableLocator.executablePath(
             names: [agentLaunchConfiguration.executable],
@@ -74,8 +82,24 @@ enum AgentTabLaunchCommand {
         provider.agentCLIExecutablePath().map(ShellEscaper.escape)
     }
 
+    static func local(provider: any AIAgentLaunchProvider, availableExecutables: Set<String>) -> String? {
+        guard availableExecutables.contains(provider.agentLaunchConfiguration.executable) else { return nil }
+
+        return command(
+            executable: provider.agentLaunchConfiguration.executable,
+            arguments: provider.agentLaunchConfiguration.interactiveArguments
+        )
+    }
+
     static func remote(provider: any AIAgentLaunchProvider) -> String {
-        ShellEscaper.escape(provider.agentLaunchConfiguration.executable)
+        command(
+            executable: provider.agentLaunchConfiguration.executable,
+            arguments: provider.agentLaunchConfiguration.interactiveArguments
+        )
+    }
+
+    private static func command(executable: String, arguments: [String]) -> String {
+        ([executable] + arguments).map(ShellEscaper.escape).joined(separator: " ")
     }
 }
 

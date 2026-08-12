@@ -73,6 +73,23 @@ struct DetectedAgentStoreTests {
         store.resetPane(paneID)
     }
 
+    @Test("resolves an icon name for a standalone agent provider")
+    func resolvesStandaloneProviderIconName() {
+        let store = DetectedAgentStore.shared
+        let paneID = UUID()
+        store.setAgent("kiro", for: paneID)
+        #expect(store.iconName(forPane: paneID) == "kiro")
+        store.resetPane(paneID)
+    }
+
+    @Test("executable snapshot includes standalone agent providers")
+    func executableSnapshotIncludesStandaloneAgentProviders() {
+        let kiro = DetectedAgentStore.executablesSnapshot(from: AIProviderRegistry.shared)
+            .first { $0.providerID == "kiro" }
+
+        #expect(kiro?.executableNames == ["kiro-cli"])
+    }
+
     @Test("returns nil icon name for a pane without a detected agent")
     func nilIconNameWhenAbsent() {
         let store = DetectedAgentStore.shared

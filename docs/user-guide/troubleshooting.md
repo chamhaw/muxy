@@ -59,7 +59,7 @@ After authenticating, restart Muxy so it picks up the new credentials.
 
 - **Commit** requires an active branch with uncommitted changes. It is disabled for a clean worktree, detached HEAD, or while another repository action is running.
 - **Create PR** appears only when Muxy can confirm through `gh` that the active branch has no pull request. Like **Commit**, it is disabled while the working tree is clean. Install and authenticate `gh` as shown above.
-- Install and authenticate at least one supported provider CLI, then reopen Muxy or bring it to the foreground so the provider list refreshes. The dropdown beside each action shows locally missing CLIs.
+- Install and authenticate at least one supported provider CLI, then reopen Muxy or bring it to the foreground so the provider list refreshes. Supported metadata providers include Claude Code, Codex, Cursor, GitHub Copilot, Droid, Grok, Kiro CLI, OpenCode, and Pi. The dropdown beside each action shows locally missing CLIs.
 - Muxy resolves local provider CLIs through your interactive login shell, matching the `PATH` used by a normal terminal session.
 - For an SSH workspace, the selected provider CLI and `gh` must be installed and authenticated on the remote host. If **Auto** selects a CLI that is unavailable remotely, choose the installed provider explicitly from the action dropdown.
 - Provider CLIs run headlessly and cannot show interactive authentication or permission prompts. Authenticate the chosen CLI in a terminal first, then retry the button; failures are shown in a toast.

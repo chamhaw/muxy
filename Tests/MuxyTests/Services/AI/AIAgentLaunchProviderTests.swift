@@ -37,6 +37,7 @@ struct AIAgentLaunchProviderTests {
             ),
             (DroidProvider(), ["exec", "--output-format", "text", prompt]),
             (PiProvider(), ["--print", "--no-session", "--no-tools", prompt]),
+            (KiroProvider(), ["chat", "--no-interactive", "--trust-tools=", prompt]),
             (
                 GrokProvider(),
                 [
@@ -115,6 +116,22 @@ struct AIAgentLaunchProviderTests {
         let provider = AgentTabLaunchTestProvider(executablePath: "/tmp/Agent Tools/codex")
 
         #expect(AgentTabLaunchCommand.local(provider: provider) == "'/tmp/Agent Tools/codex'")
+    }
+
+    @Test("agent tabs append interactive launch arguments safely")
+    func agentTabCommandIncludesInteractiveArguments() {
+        let provider = AgentTabLaunchTestProvider(
+            executablePath: "/tmp/Agent Tools/kiro-cli",
+            interactiveArguments: ["chat", "--agent", "team profile"]
+        )
+
+        #expect(
+            AgentTabLaunchCommand.local(
+                provider: provider,
+                availableExecutables: ["test-agent"]
+            ) == "test-agent chat --agent 'team profile'"
+        )
+        #expect(AgentTabLaunchCommand.remote(provider: provider) == "test-agent chat --agent 'team profile'")
     }
 
     @Test("agent tabs omit unavailable local providers")
@@ -268,10 +285,20 @@ private struct AgentTabLaunchTestProvider: AIAgentLaunchProvider {
     let displayName = "Test Agent"
     let iconName = "sparkles"
     let executablePath: String?
-    let agentLaunchConfiguration = AIAgentLaunchConfiguration(
-        executable: "test-agent",
-        headlessArguments: []
-    )
+    let interactiveArguments: [String]
+
+    init(executablePath: String?, interactiveArguments: [String] = []) {
+        self.executablePath = executablePath
+        self.interactiveArguments = interactiveArguments
+    }
+
+    var agentLaunchConfiguration: AIAgentLaunchConfiguration {
+        AIAgentLaunchConfiguration(
+            executable: "test-agent",
+            interactiveArguments: interactiveArguments,
+            headlessArguments: []
+        )
+    }
 
     func agentCLIExecutablePath() -> String? {
         executablePath

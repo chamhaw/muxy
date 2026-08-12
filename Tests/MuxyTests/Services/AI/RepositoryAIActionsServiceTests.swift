@@ -94,6 +94,24 @@ struct RepositoryAIActionsServiceTests {
         #expect(configuration.executable == "codex")
     }
 
+    @Test("Kiro is available for repository metadata generation")
+    func kiroLaunchConfigurationSupportsRepositoryMetadata() throws {
+        let provider = KiroProvider(
+            homeDirectory: "/tmp/muxy-test-home",
+            pathEnvironment: "/tmp/muxy-test-bin"
+        )
+
+        let configuration = try #require(RepositoryAIActionsService.resolveLaunchConfiguration(
+            provider: provider,
+            isRemote: true
+        ))
+        let invocation = try #require(configuration.invocation(prompt: "generate metadata"))
+
+        #expect(configuration.executable == "kiro-cli")
+        #expect(configuration.interactiveArguments == ["chat"])
+        #expect(invocation.arguments == ["chat", "--no-interactive", "--trust-tools=", "generate metadata"])
+    }
+
     @Test("commit stages, generates metadata, commits, and pushes through native Git")
     func commitWorkflow() async throws {
         let git = RepositoryActionGitMock(stagedDiff: "diff --git a/file b/file")

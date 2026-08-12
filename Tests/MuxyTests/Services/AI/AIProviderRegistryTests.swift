@@ -44,6 +44,14 @@ struct AIProviderRegistryTests {
         #expect(source == .socket)
     }
 
+    @Test("Kiro is an agent provider without hook notification integration")
+    func kiroStaysOutOfHookProviderRegistry() {
+        #expect(!AIProviderRegistry.shared.providers.contains { $0.id == "kiro" })
+        #expect(AIProviderRegistry.shared.agentLaunchProviders.contains { $0.id == "kiro" })
+        #expect(AIProviderRegistry.shared.notificationSource(for: "kiro") == .socket)
+        #expect(AIProviderRegistry.shared.notificationSource(for: "kiro_hook") == .socket)
+    }
+
     @Test("iconName resolves a built-in provider icon")
     func iconNameResolvesBuiltIn() {
         #expect(AIProviderRegistry.shared.iconName(for: .aiProvider("claude")) == "claude")
@@ -71,6 +79,7 @@ struct AIProviderRegistryTests {
             "droid",
             "pi",
             "grok",
+            "kiro",
         ])
     }
 

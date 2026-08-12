@@ -87,6 +87,7 @@ final class AIProviderRegistry {
     private let piProvider = PiProvider()
     private let grokProvider = GrokProvider()
     private let injectedProviders: [AIProviderIntegration]?
+    private let standaloneAgentProviders: [any AIAgentLaunchProvider]
     private let hydrateLoginShellPath: @Sendable () async -> Void
     private let shouldInstallHooksInDebug: @Sendable () -> Bool
     private let hookScriptPath: @Sendable (String, String) -> String?
@@ -110,6 +111,7 @@ final class AIProviderRegistry {
 
     init(
         providers: [AIProviderIntegration]? = nil,
+        agentProviders: [any AIAgentLaunchProvider]? = nil,
         hydrateLoginShellPath: @escaping @Sendable () async -> Void = { await LoginShellPath.hydrate() },
         shouldInstallHooksInDebug: @escaping @Sendable () -> Bool = {
             ProcessInfo.processInfo.environment["FF_AI_HOOKS"] != nil
@@ -124,6 +126,7 @@ final class AIProviderRegistry {
         discoveryService: ProviderDiscoveryService? = nil
     ) {
         injectedProviders = providers
+        standaloneAgentProviders = agentProviders ?? (providers == nil ? [KiroProvider()] : [])
         self.hydrateLoginShellPath = hydrateLoginShellPath
         self.shouldInstallHooksInDebug = shouldInstallHooksInDebug
         self.hookScriptPath = hookScriptPath
@@ -302,9 +305,23 @@ final class AIProviderRegistry {
 
     func iconName(forProviderID id: String) -> String? {
         providers.first(where: { $0.id == id })?.iconName
+            ?? standaloneAgentProviders.first(where: { $0.id == id })?.iconName
     }
 
     var agentLaunchProviders: [any AIAgentLaunchProvider] {
-        providers.compactMap { $0 as? any AIAgentLaunchProvider }
+        let integratedProviders = providers.compactMap { $0 as? any AIAgentLaunchProvider }
+        let integratedIDs = Set(integratedProviders.map(\.id))
+        return integratedProviders + standaloneAgentProviders.filter { !integratedIDs.contains($0.id) }
+    }
+
+    var agentExecutables: [AIAgentExecutable] {
+        let integratedExecutables = providers.map {
+            AIAgentExecutable(providerID: $0.id, executableNames: $0.executableNames)
+        }
+        let integratedIDs = Set(providers.map(\.id))
+        let standaloneExecutables = standaloneAgentProviders
+            .filter { !integratedIDs.contains($0.id) }
+            .map { AIAgentExecutable(providerID: $0.id, executableNames: $0.agentExecutableNames) }
+        return integratedExecutables + standaloneExecutables
     }
 }
